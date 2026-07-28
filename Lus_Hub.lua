@@ -9,19 +9,282 @@
 --  Lus_Hub - Doors 综合辅助
 --  开发者: Shadow
 --  版本: v2.0
---  单文件完整版
+--  单文件完整版 (仅依赖 ObsidianUI)
 -- ========================================
 
--- ==================== 加载库 ====================
+-- ==================== 加载 ObsidianUI ====================
 local Obsidian = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
-local ESPLib = getgenv().mstudio45_ESP
 
-if not ESPLib then
-    warn("[Lus_Hub] ESP library not loaded")
+if not Obsidian then
+    warn("[Lus_Hub] Failed to load ObsidianUI")
     return
 end
 
--- ==================== 语言表 ====================
+-- ==================== 内置 ESP 库 (mstudio45) ====================
+-- 完整内嵌，不依赖外部加载
+local ESPLib = {}
+do
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local CoreGui = game:GetService("CoreGui")
+
+    local camera = workspace.CurrentCamera
+    local character = nil
+    local rootPart = nil
+
+    local function GetPivot(inst)
+        if inst.ClassName == "Bone" then return inst.TransformedWorldCFrame
+        elseif inst.ClassName == "Attachment" then return inst.WorldCFrame
+        elseif inst.ClassName == "Camera" then return inst.CFrame
+        else return inst:GetPivot() end
+    end
+
+    local function FindPrimaryPart(inst)
+        if not inst then return nil end
+        return (inst:IsA("Model") and inst.PrimaryPart)
+            or inst:FindFirstChildWhichIsA("BasePart")
+            or inst:FindFirstChildWhichIsA("UnionOperation")
+            or inst
+    end
+
+    local function DistanceFrom(inst, from)
+        if not (inst and from) then return 9e9 end
+        local pos1 = typeof(inst) == "Instance" and GetPivot(inst).Position or inst
+        local pos2 = typeof(from) == "Instance" and GetPivot(from).Position or from
+        return (pos2 - pos1).Magnitude
+    end
+
+    local MainGUI = Instance.new("ScreenGui")
+    MainGUI.Parent = CoreGui
+    MainGUI.Name = "LusHub_ESP"
+    MainGUI.ResetOnSpawn = false
+
+    local StorageFolder = Instance.new("Folder", game)
+    StorageFolder.Name = "LusHub_ESP_Storage"
+
+    ESPLib.Objects = {}
+    ESPLib.GlobalConfig = {
+        Highlighters = true,
+        Billboards = true,
+        Distance = true,
+        Tracers = false,
+        Arrows = true,
+        Rainbow = false,
+        Font = Enum.Font.Gotham,
+    }
+    ESPLib.RainbowHue = 0
+    ESPLib.RainbowColor = Color3.new(1, 1, 1)
+
+    function ESPLib:Add(settings)
+        if not settings or not settings.Model then return nil end
+
+        local espData = {
+            Index = tostring(math.random(100000, 999999)),
+            Settings = table.clone(settings),
+            Deleted = false,
+            Hidden = false,
+        }
+
+        espData.Settings.Name = settings.Name or settings.Model.Name
+        espData.Settings.Color = settings.Color or Color3.new(1, 1, 1)
+        espData.Settings.MaxDistance = settings.MaxDistance or 5000
+        espData.Settings.FillTransparency = settings.FillTransparency or 0.65
+        espData.Settings.OutlineTransparency = settings.OutlineTransparency or 0
+        espData.Settings.FillColor = settings.FillColor or Color3.new(1, 1, 1)
+        espData.Settings.OutlineColor = settings.OutlineColor or Color3.new(1, 1, 1)
+        espData.Settings.TextSize = settings.TextSize or 16
+        espData.Settings.StudsOffset = settings.StudsOffset or Vector3.new(0, 3, 0)
+        espData.Settings.Visible = (settings.Visible ~= false)
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = espData.Index
+        billboard.Parent = MainGUI
+        billboard.Adornee = settings.Model
+        billboard.StudsOffset = espData.Settings.StudsOffset
+        billboard.Size = UDim2.new(0, 200, 0, 50)
+        billboard.AlwaysOnTop = true
+        billboard.Enabled = true
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = espData.Settings.Name
+        textLabel.TextColor3 = espData.Settings.Color
+        textLabel.TextSize = espData.Settings.TextSize
+        textLabel.Font = ESPLib.GlobalConfig.Font
+        textLabel.TextStrokeTransparency = 0
+        textLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+        textLabel.Parent = billboard
+
+        local highlighter = Instance.new("Highlight")
+        highlighter.Name = espData.Index
+        highlighter.Parent = MainGUI
+        highlighter.Adornee = settings.Model
+        highlighter.FillColor = espData.Settings.FillColor
+        highlighter.OutlineColor = espData.Settings.OutlineColor
+        highlighter.FillTransparency = espData.Settings.FillTransparency
+        highlighter.OutlineTransparency = espData.Settings.OutlineTransparency
+
+        local tracer = nil
+        if settings.Tracer and settings.Tracer.Enabled then
+            local path2d = Instance.new("Path2D")
+            path2d.Parent = MainGUI
+            path2d.Color3 = settings.Tracer.Color or Color3.new(1, 0, 0)
+            path2d.Thickness = settings.Tracer.Thickness or 2
+            path2d.Transparency = settings.Tracer.Transparency or 0
+            tracer = path2d
+        end
+
+        local arrow = nil
+        if settings.Arrow and settings.Arrow.Enabled then
+            local img = Instance.new("ImageLabel")
+            img.Parent = MainGUI
+            img.Size = UDim2.new(0, 48, 0, 48)
+            img.SizeConstraint = Enum.SizeConstraint.RelativeYY
+            img.AnchorPoint = Vector2.new(0.5, 0.5)
+            img.BackgroundTransparency = 1
+            img.BorderSizePixel = 0
+            img.Image = "http://www.roblox.com/asset/?id=16368985219"
+            img.ImageColor3 = settings.Arrow.Color or Color3.new(1, 1, 1)
+            img.Visible = false
+            arrow = img
+        end
+
+        local function UpdateESP()
+            if espData.Deleted then return end
+            if not espData.Settings.Visible then
+                billboard.Enabled = false
+                highlighter.Adornee = nil
+                highlighter.Parent = StorageFolder
+                if tracer then tracer.Visible = false end
+                if arrow then arrow.Visible = false end
+                return
+            end
+
+            local modelRoot = FindPrimaryPart(settings.Model)
+            if not modelRoot then return end
+
+            local dist = DistanceFrom(modelRoot, rootPart or camera)
+            if dist > espData.Settings.MaxDistance then
+                billboard.Enabled = false
+                highlighter.Adornee = nil
+                highlighter.Parent = StorageFolder
+                if tracer then tracer.Visible = false end
+                if arrow then arrow.Visible = false end
+                return
+            end
+
+            billboard.Enabled = ESPLib.GlobalConfig.Billboards
+            highlighter.Adornee = ESPLib.GlobalConfig.Highlighters and settings.Model or nil
+            highlighter.Parent = ESPLib.GlobalConfig.Highlighters and MainGUI or StorageFolder
+
+            if ESPLib.GlobalConfig.Rainbow then
+                local color = ESPLib.RainbowColor
+                textLabel.TextColor3 = color
+                highlighter.FillColor = color
+                highlighter.OutlineColor = color
+                if tracer then tracer.Color3 = color end
+                if arrow then arrow.ImageColor3 = color end
+            else
+                textLabel.TextColor3 = espData.Settings.Color
+                highlighter.FillColor = espData.Settings.FillColor
+                highlighter.OutlineColor = espData.Settings.OutlineColor
+                if tracer then tracer.Color3 = espData.Settings.Tracer and espData.Settings.Tracer.Color or Color3.new(1, 0, 0) end
+                if arrow then arrow.ImageColor3 = espData.Settings.Arrow and espData.Settings.Arrow.Color or Color3.new(1, 1, 1) end
+            end
+
+            if ESPLib.GlobalConfig.Distance then
+                textLabel.Text = string.format("%s\n[%dm]", espData.Settings.Name, math.floor(dist))
+            else
+                textLabel.Text = espData.Settings.Name
+            end
+
+            -- Tracer
+            if tracer then
+                tracer.Visible = ESPLib.GlobalConfig.Tracers and espData.Settings.Tracer and espData.Settings.Tracer.Enabled or false
+                if tracer.Visible and camera then
+                    local screenPos = camera:WorldToViewportPoint(modelRoot.Position)
+                    local from = espData.Settings.Tracer and espData.Settings.Tracer.From or "Bottom"
+                    local viewSize = camera.ViewportSize
+                    local fromPos
+                    if from == "Top" then
+                        fromPos = Vector2.new(viewSize.X / 2, 0)
+                    elseif from == "Center" then
+                        fromPos = Vector2.new(viewSize.X / 2, viewSize.Y / 2)
+                    elseif from == "Mouse" then
+                        local mouse = UserInputService:GetMouseLocation()
+                        fromPos = Vector2.new(mouse.X, mouse.Y)
+                    else
+                        fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
+                    end
+                    tracer:SetControlPoints({
+                        Path2DControlPoint.new(UDim2.fromOffset(fromPos.X, fromPos.Y)),
+                        Path2DControlPoint.new(UDim2.fromOffset(screenPos.X, screenPos.Y))
+                    })
+                end
+            end
+
+            -- Arrow
+            if arrow then
+                local screenPos = camera:WorldToViewportPoint(modelRoot.Position)
+                arrow.Visible = ESPLib.GlobalConfig.Arrows and espData.Settings.Arrow and espData.Settings.Arrow.Enabled and screenPos.Z <= 0
+                if arrow.Visible then
+                    local viewSize = camera.ViewportSize
+                    local center = Vector2.new(viewSize.X / 2, viewSize.Y / 2)
+                    local dir = Vector2.new(screenPos.X, screenPos.Y) - center
+                    local angle = math.deg(math.atan2(dir.Y, dir.X)) + 90
+                    local offset = (espData.Settings.Arrow.CenterOffset or 300) * 0.001 * viewSize.Y
+                    arrow.Rotation = angle + 180
+                    arrow.Position = UDim2.new(0, center.X + offset * math.cos(math.atan2(dir.Y, dir.X)), 0, center.Y + offset * math.sin(math.atan2(dir.Y, dir.X)))
+                end
+            end
+        end
+
+        espData.Update = UpdateESP
+        table.insert(ESPLib.Objects, espData)
+
+        return {
+            Destroy = function()
+                espData.Deleted = true
+                billboard:Destroy()
+                highlighter:Destroy()
+                if tracer then tracer:Destroy() end
+                if arrow then arrow:Destroy() end
+            end,
+            Show = function()
+                espData.Settings.Visible = true
+            end,
+            Hide = function()
+                espData.Settings.Visible = false
+            end,
+            Update = UpdateESP,
+            Settings = espData.Settings,
+        }
+    end
+
+    -- 更新循环
+    RunService.RenderStepped:Connect(function()
+        ESPLib.RainbowHue = (ESPLib.RainbowHue + 0.002) % 1
+        ESPLib.RainbowColor = Color3.fromHSV(ESPLib.RainbowHue, 0.8, 1)
+
+        character = Players.LocalPlayer.Character
+        if character then
+            rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+        end
+        camera = workspace.CurrentCamera
+
+        for _, esp in pairs(ESPLib.Objects) do
+            pcall(esp.Update)
+        end
+    end)
+
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        camera = workspace.CurrentCamera
+    end)
+end
+
+-- ==================== 语言表 (内嵌) ====================
 local Language = {
     Current = "zh",
     zh = {
@@ -334,8 +597,8 @@ EntityGroup:AddToggle("PlayerESP", {
     Callback = function(Value) print("Player ESP:", Value) end
 })
 
--- 怪物扫描
-local MONSTERS = {"Rush", "Ambush", "Seek", "Figure", "A-60", "A-120", "Dupe", "Eyes", "Screech", "Halt"}
+-- 怪物扫描 + ESP
+local MONSTERS = {"Rush", "Ambush", "Seek", "Figure", "A-60", "A-120", "Dupe", "Eyes", "Screech", "Halt", "Dread", "Giggle", "Lookman"}
 local MonsterESPObjects = {}
 local AlertCooldown = {}
 
@@ -505,7 +768,6 @@ UtilGroup:AddSlider("VolumeControl", {
 -- ========================================
 local MiscTab = Window:AddTab(Language.Get("misc"), "box")
 
--- Auto Rooms + Anti 功能
 local AutoGroup = MiscTab:AddLeftGroupbox(Language.Get("auto_rooms"))
 
 AutoGroup:AddToggle("AutoRooms", {
@@ -631,7 +893,7 @@ ExtensionListGroup:AddButton({
 RefreshExtensionList()
 
 -- ========================================
---  AutoRooms 核心逻辑
+--  AutoRooms 核心逻辑 (内嵌)
 -- ========================================
 local function StartAutoRooms()
     if game.PlaceId ~= 6839171747 or game.ReplicatedStorage.GameData.Floor.Value ~= "Rooms" then
@@ -803,7 +1065,9 @@ local function StartAutoRooms()
     LusHub:LogInfo("AutoRooms loaded")
 end
 
--- 启动 AutoRooms
+-- ========================================
+--  启动 AutoRooms (不阻塞主线程)
+-- ========================================
 task.spawn(StartAutoRooms)
 
 -- ========================================
