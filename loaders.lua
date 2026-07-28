@@ -1,7 +1,15 @@
 -- ========================================
+--  ██╗     ██╗   ██╗███████╗
+--  ██║     ██║   ██║██╔════╝
+--  ██║     ██║   ██║███████╗
+--  ██║     ██║   ██║╚════██║
+--  ███████╗╚██████╔╝███████║
+--  ╚══════╝ ╚═════╝ ╚══════╝
+--  
 --  Lus_Hub - Loader
 --  开发者: Shadow
 --  版本: v2.0
+--  入口: 加载所有模块
 -- ========================================
 
 print("[Lus_Hub] Starting...")
@@ -31,6 +39,48 @@ if not ESPLib then
     return
 end
 
+-- ==================== LusHub 品牌 ====================
+local LusHub = {
+    Name = "Lus_Hub",
+    Developer = "Shadow",
+    Version = "2.0",
+    BrandSound = 4590662766,
+}
+
+function LusHub:LogInfo(msg)
+    print("[Lus_Hub] [Info] " .. msg)
+end
+
+function LusHub:LogWarning(msg)
+    warn("[Lus_Hub] [Warning] " .. msg)
+end
+
+function LusHub:NotifyInfo(title, desc)
+    Obsidian:Notify({
+        Title = title or Language.Get("information"),
+        Description = desc,
+        Time = 5,
+    })
+end
+
+function LusHub:NotifyWarning(desc)
+    Obsidian:Notify({
+        Title = Language.Get("warning"),
+        Description = desc,
+        Time = 6,
+    })
+end
+
+function LusHub:PlaySound(volume)
+    pcall(function()
+        local Sound = Instance.new("Sound", game:GetService("SoundService"))
+        Sound.SoundId = "rbxassetid://4590662766"
+        Sound.Volume = volume or 5
+        Sound.PlayOnRemove = true
+        Sound:Destroy()
+    end)
+end
+
 -- ==================== 创建主窗口 ====================
 local Window = Obsidian:CreateWindow({
     Title = "Lus_Hub",
@@ -40,8 +90,8 @@ local Window = Obsidian:CreateWindow({
     ToggleKeybind = Enum.KeyCode.RightControl,
 })
 
--- ==================== 创建设置 Tab (语言切换) ====================
-local SettingsTab = Window:AddTab("Settings", "settings")
+-- ==================== Settings Tab (语言切换) ====================
+local SettingsTab = Window:AddTab(Language.Get("settings"), "settings")
 local SettingsGroup = SettingsTab:AddLeftGroupbox(Language.Get("language"))
 
 SettingsGroup:AddDropdown("LanguageSelect", {
@@ -66,39 +116,32 @@ SettingsGroup:AddDropdown("LanguageSelect", {
 local ESPModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/ESP.lua"))()
 local MiscModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Misc.lua"))()
 local AutoRoomsModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/AutoRooms.lua"))()
+local MainModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Main.lua"))()
 
 -- ==================== 初始化模块 ====================
-if ESPModule then
-    ESPModule.Init(LusHub, Window, Obsidian, ESPLib, Language)
+local function InitModule(module, name)
+    if module and type(module.Init) == "function" then
+        local success, err = pcall(module.Init, LusHub, Window, Obsidian, ESPLib, Language)
+        if success then
+            LusHub:LogInfo(name .. " module loaded")
+        else
+            LusHub:LogWarning(name .. " module failed: " .. tostring(err))
+        end
+    else
+        LusHub:LogWarning(name .. " module not found or invalid")
+    end
 end
 
-if MiscModule then
-    MiscModule.Init(LusHub, Window, Obsidian, ESPLib, Language)
-end
-
-if AutoRoomsModule then
-    AutoRoomsModule.Init(LusHub, Language)
-end
+InitModule(ESPModule, "ESP")
+InitModule(MiscModule, "Misc")
+InitModule(AutoRoomsModule, "AutoRooms")
+InitModule(MainModule, "Main")
 
 -- ==================== 品牌启动音效 ====================
-local function PlaySound(soundId, volume)
-    pcall(function()
-        local Sound = Instance.new("Sound", game:GetService("SoundService"))
-        Sound.SoundId = "rbxassetid://" .. tostring(soundId or 4590662766)
-        Sound.Volume = volume or 5
-        Sound.PlayOnRemove = true
-        Sound:Destroy()
-    end)
-end
-
-PlaySound(4590662766, 5)
+LusHub:PlaySound(5)
 
 -- ==================== 加载完成通知 ====================
 task.wait(1)
-Obsidian:Notify({
-    Title = "Lus_Hub",
-    Description = Language.Get("loaded") .. " | " .. Language.Get("developer"),
-    Time = 4,
-})
+LusHub:NotifyInfo("Lus_Hub", Language.Get("loaded") .. " | " .. Language.Get("developer"))
 
 print("[Lus_Hub] Loaded successfully")
