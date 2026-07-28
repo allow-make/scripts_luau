@@ -9,7 +9,7 @@
 --  Lus_Hub - Loader
 --  开发者: Shadow
 --  版本: v2.0
---  入口: 加载所有模块
+--  注册所有 UI API，供其他模块使用
 -- ========================================
 
 print("[Lus_Hub] Starting...")
@@ -39,56 +39,82 @@ if not ESPLib then
     return
 end
 
--- ==================== LusHub 品牌 ====================
-local LusHub = {
+-- ========================================
+--  LusHub 全局 API (注册给所有模块)
+-- ========================================
+_G.LusHub = {
     Name = "Lus_Hub",
     Developer = "Shadow",
     Version = "2.0",
     BrandSound = 4590662766,
+    
+    -- UI API
+    Obsidian = Obsidian,
+    ESPLib = ESPLib,
+    Language = Language,
+    Window = nil,
+    
+    -- 通知 API
+    NotifyInfo = function(title, desc)
+        Obsidian:Notify({
+            Title = title or Language.Get("information"),
+            Description = desc,
+            Time = 5,
+        })
+    end,
+    
+    NotifyWarning = function(desc)
+        Obsidian:Notify({
+            Title = Language.Get("warning"),
+            Description = desc,
+            Time = 6,
+        })
+    end,
+    
+    -- 音效 API
+    PlaySound = function(volume)
+        pcall(function()
+            local Sound = Instance.new("Sound", game:GetService("SoundService"))
+            Sound.SoundId = "rbxassetid://4590662766"
+            Sound.Volume = volume or 5
+            Sound.PlayOnRemove = true
+            Sound:Destroy()
+        end)
+    end,
+    
+    -- 日志 API
+    LogInfo = function(msg)
+        print("[Lus_Hub] [Info] " .. msg)
+    end,
+    
+    LogWarning = function(msg)
+        warn("[Lus_Hub] [Warning] " .. msg)
+    end,
+    
+    -- 安全执行 API
+    Try = function(func, errorMsg)
+        local success, result = pcall(func)
+        if not success then
+            _G.LusHub:NotifyWarning(errorMsg or tostring(result))
+            _G.LusHub:LogWarning(errorMsg or tostring(result))
+            return nil
+        end
+        return result
+    end,
 }
 
-function LusHub:LogInfo(msg)
-    print("[Lus_Hub] [Info] " .. msg)
-end
-
-function LusHub:LogWarning(msg)
-    warn("[Lus_Hub] [Warning] " .. msg)
-end
-
-function LusHub:NotifyInfo(title, desc)
-    Obsidian:Notify({
-        Title = title or Language.Get("information"),
-        Description = desc,
-        Time = 5,
-    })
-end
-
-function LusHub:NotifyWarning(desc)
-    Obsidian:Notify({
-        Title = Language.Get("warning"),
-        Description = desc,
-        Time = 6,
-    })
-end
-
-function LusHub:PlaySound(volume)
-    pcall(function()
-        local Sound = Instance.new("Sound", game:GetService("SoundService"))
-        Sound.SoundId = "rbxassetid://4590662766"
-        Sound.Volume = volume or 5
-        Sound.PlayOnRemove = true
-        Sound:Destroy()
-    end)
-end
+local LusHub = _G.LusHub
 
 -- ==================== 创建主窗口 ====================
 local Window = Obsidian:CreateWindow({
     Title = "Lus_Hub",
-    Footer = Language.Get("developer") .. " | " .. Language.Get("version"),
+    Footer = LusHub.Developer .. " | " .. LusHub.Version,
     Center = true,
     AutoShow = true,
     ToggleKeybind = Enum.KeyCode.RightControl,
 })
+
+LusHub.Window = Window
 
 -- ==================== Settings Tab (语言切换) ====================
 local SettingsTab = Window:AddTab(Language.Get("settings"), "settings")
@@ -104,38 +130,31 @@ SettingsGroup:AddDropdown("LanguageSelect", {
         else
             Language.Set("en")
         end
-        Obsidian:Notify({
-            Title = Language.Get("information"),
-            Description = "Language changed to: " .. Value,
-            Time = 3,
-        })
+        LusHub:NotifyInfo(Language.Get("information"), "Language changed to: " .. Value)
     end
 })
 
 -- ==================== 加载后端模块 ====================
-local ESPModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/ESP.lua"))()
-local MiscModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Misc.lua"))()
-local AutoRoomsModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/AutoRooms.lua"))()
-local MainModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Main.lua"))()
-
--- ==================== 初始化模块 ====================
-local function InitModule(module, name)
-    if module and type(module.Init) == "function" then
-        local success, err = pcall(module.Init, LusHub, Window, Obsidian, ESPLib, Language)
-        if success then
+local function LoadModule(url, name)
+    local success, module = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+    if success and module and type(module.Init) == "function" then
+        local ok, err = pcall(module.Init, LusHub)
+        if ok then
             LusHub:LogInfo(name .. " module loaded")
         else
             LusHub:LogWarning(name .. " module failed: " .. tostring(err))
         end
     else
-        LusHub:LogWarning(name .. " module not found or invalid")
+        LusHub:LogWarning(name .. " module not found")
     end
 end
 
-InitModule(ESPModule, "ESP")
-InitModule(MiscModule, "Misc")
-InitModule(AutoRoomsModule, "AutoRooms")
-InitModule(MainModule, "Main")
+LoadModule("https://raw.githubusercontent.com/allow-make/scripts_luau/main/ESP.lua", "ESP")
+LoadModule("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Main.lua", "Main")
+LoadModule("https://raw.githubusercontent.com/allow-make/scripts_luau/main/Misc.lua", "Misc")
+LoadModule("https://raw.githubusercontent.com/allow-make/scripts_luau/main/AutoRooms.lua", "AutoRooms")
 
 -- ==================== 品牌启动音效 ====================
 LusHub:PlaySound(5)
